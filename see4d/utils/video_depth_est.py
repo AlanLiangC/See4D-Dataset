@@ -1,9 +1,9 @@
 import torch
-import sys
-sys.path.append('/data/dylu/project/See4D-Dataset')
-from see4d.submodules.video_depth_anything.video_depth import VideoDepthAnything
-from see4d.dataset.syncam4d import Syncam4DDataset
-from see4d.dataset.processer import image_process
+# import sys
+# sys.path.append('/data/dylu/project/See4D-Dataset')
+from ..submodules.video_depth_anything.video_depth import VideoDepthAnything
+from ..dataset.syncam4d import Syncam4DDataset
+from ..dataset.processer import image_process
 from fast3r.dust3r.inference_multiview import inference
 from fast3r.models.fast3r import Fast3R
 from fast3r.models.multiview_dust3r_module import MultiViewDUSt3RLitModule
@@ -60,6 +60,7 @@ class Fast3R_Inferencer:
             rel = self.inference_from_images(images)
         else:
             raise NotImplementedError()
+        return rel
 
     def inference_from_item(self, index):
         if not hasattr(self, 'dataset'):
@@ -102,7 +103,7 @@ class Fast3R_Inferencer:
             point_cloud = pred['pts3d_in_other_view'].cpu().numpy()
             print(f"Point Cloud Shape for view {view_idx}: {point_cloud.shape}")  
 
-        return output_dict, profiling_info
+        return output_dict, profiling_info 
 
 if __name__ == "__main__":
     # test depth

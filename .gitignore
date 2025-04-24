@@ -23,3 +23,6 @@ TestResults.xml
 *.safetensors
 *.pth
 *.pyc
+.gradio
+gradio_tmp_dir/
+data/
