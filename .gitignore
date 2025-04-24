@@ -26,3 +26,4 @@ TestResults.xml
 .gradio
 gradio_tmp_dir/
 data/
+tools/ALTest

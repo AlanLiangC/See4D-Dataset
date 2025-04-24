@@ -1,6 +1,6 @@
 import os
 import json
-import random
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
@@ -8,6 +8,7 @@ import numpy as np
 from einops import rearrange
 import matplotlib.pyplot as plt
 from decord import VideoReader
+import imageio
 
 VIEWS = {
     'syncam4d': 36,
@@ -15,14 +16,13 @@ VIEWS = {
     'obj4d-10k': 18,
 }
 
+def numpy_to_mp4(image_sequence, output_path, fps=10):
+
+    imageio.mimwrite(output_path, image_sequence, fps=fps, codec='libx264', quality=10)
+
 def load_video(video_dir, id, target_resolution=(256, 384), num_videos=36, background_color="random"):
     # Construct paths
     video_path = os.path.join(video_dir, 'videos', id + ".mp4")
-    # metadata_path = os.path.join(video_dir, 'videos', id + ".json")
-
-    # with open(metadata_path, "r") as f:
-    #     metadata = json.load(f)
-
     vr = VideoReader(video_path)
     num_frames = len(vr)
     # num_videos = metadata["num_videos"]
@@ -59,16 +59,17 @@ def load_video(video_dir, id, target_resolution=(256, 384), num_videos=36, backg
         video = rearrange(video, "v f h w c -> v f c h w")
     
     # print(f'Loaded {video.shape[0]} videos with {video.shape[1]} frames each. Resolution: {video.shape[3]}x{video.shape[4]}')
+    if num_videos == 36:  # syncam4d
 
-    # Assume video has shape [v, f, c, H, W]
-    v, f, c, H, W = video.shape
-    # Merge view and frame dimensions
-    video_merged = video.view(v * f, c, H, W)
-    # Resize to target resolution (new_H, new_W)
-    video_resized = F.interpolate(video_merged, size=target_resolution, mode="bilinear", align_corners=False)
-    # Reshape back to [v, f, c, new_H, new_W]
-    video = video_resized.view(v, f, c, target_resolution[0], target_resolution[1])
-
+        # Assume video has shape [v, f, c, H, W]
+        v, f, c, H, W = video.shape
+        # Merge view and frame dimensions
+        video_merged = video.view(v * f, c, H, W)
+        # Resize to target resolution (new_H, new_W)
+        video_resized = F.interpolate(video_merged, size=target_resolution, mode="bilinear", align_corners=False)
+        # Reshape back to [v, f, c, new_H, new_W]
+        video = video_resized.view(v, f, c, target_resolution[0], target_resolution[1])
+        
     return video
 
 # --- Base Dataset Class for 4D Data ---
@@ -126,8 +127,35 @@ class Base4DDataset(Dataset):
         # v, f, c, H, W = video.shape
         return (video.cpu().numpy()*255).astype(np.uint8)
 
+    def __getitem_video__(self, idx, to_video=False):
+        data_dict = dict()
+        seq = self.ids[idx]
+        # video
+        video_dir = os.path.join(self.root, self.dataset_name)
+        video = load_video(video_dir, seq, self.target_resolution, self.num_videos)
+        video = video.permute(0,1,3,4,2) # TODO
+        video = (video.cpu().numpy()*255).astype(np.uint8)
+        if to_video:
+            output_path = Path(f"data/temp/{seq}")
+            output_path.mkdir(parents=True, exist_ok=True)
+            video_path = output_path / f'{seq}.mp4'
+            numpy_to_mp4(video[0], output_path=str(video_path))
+            data_dict.update({
+                "video_path": video_path})
+
+        data_dict.update({
+            "video": video,
+            "id": seq
+        })
+        return data_dict
+
 
 class Syncam4DDataset(Base4DDataset):
-    def __init__(self, root, split="train", num_frames_sample=8, target_resolution=(512,512), mini=False):
+    def __init__(self, root, dataset_name='syncam4d', split="train", num_frames_sample=8, target_resolution=(512,512), mini=False):
         # For syncam4d, assume 36 views and group_size=9.
-        super().__init__(root, 'syncam4d', split, num_frames_sample, target_resolution=target_resolution, mini=mini)
+        super().__init__(root, dataset_name, split, num_frames_sample, target_resolution=target_resolution, mini=mini)
+
+class Kubric4DDataset(Syncam4DDataset):
+    def __init__(self, root, split="train", num_frames_sample=8, target_resolution=(256,384)):
+        # For kubric4d, assume 16 views and choose group_size accordingly (e.g., 6).
+        super().__init__(root, 'kubric4d', split, num_frames_sample, target_resolution=target_resolution)
